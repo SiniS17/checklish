@@ -156,9 +156,11 @@
       <h3>📋 Setup Instructions</h3>
       <ol>
         <li>Upload your Excel file to Google Drive</li>
-        <li>Right-click the file → Share → Change to "Anyone with the link"</li>
-        <li>Copy the file ID from the share link (e.g., <code>1ABC...XYZ</code> from <code>https://drive.google.com/file/d/1ABC...XYZ/view</code>)</li>
-        <li>Replace <code>YOUR_FILE_ID_HERE</code> in the code below (line 145) with your file ID</li>
+        <li>Right-click → Open with → <strong>Google Sheets</strong></li>
+        <li>In Google Sheets: <strong>File → Share → Publish to web</strong></li>
+        <li>Select format: <strong>Microsoft Excel (.xlsx)</strong></li>
+        <li>Click <strong>Publish</strong> and copy the URL</li>
+        <li>Replace <code>PUBLISHED_SHEET_URL</code> in the code with your URL</li>
       </ol>
     </div>
 
@@ -169,8 +171,8 @@
 
   <script>
     // ==================== CONFIGURATION ====================
-    // Replace this with your Google Drive file ID
-    const GOOGLE_DRIVE_FILE_ID = '1HtLLN0qPq814I6Mjy9-seukwcDlzeSm3';
+    // Published Google Sheets URL
+    const PUBLISHED_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTQu_7Kj_VJ9QHiPjsQqrLy-igPM2FiqAOaZ3NOKVmpajUS_Pjvi_ArUbkPEgyQdQ/pub?output=xlsx';
     // ======================================================
 
     let checklistData = [];
@@ -198,15 +200,16 @@
       document.getElementById('progress-percent').textContent = percent + '%';
     }
 
-    // Load Excel file from Google Drive
+    // Load Excel file from published Google Sheets
     async function loadFromGoogleDrive() {
       try {
-        // Convert Google Drive link to direct download link
-        const downloadUrl = `https://drive.google.com/uc?export=download&id=${GOOGLE_DRIVE_FILE_ID}`;
-        
-        const response = await fetch(downloadUrl);
+        if (PUBLISHED_SHEET_URL === 'YOUR_PUBLISHED_URL_HERE') {
+          throw new Error('Please update PUBLISHED_SHEET_URL with your published Google Sheets URL (see setup instructions).');
+        }
+
+        const response = await fetch(PUBLISHED_SHEET_URL);
         if (!response.ok) {
-          throw new Error('Failed to fetch file from Google Drive. Make sure the file is shared publicly.');
+          throw new Error(`Failed to fetch file (Status: ${response.status}). Make sure you published the Google Sheet correctly.`);
         }
         
         const arrayBuffer = await response.arrayBuffer();
@@ -222,10 +225,12 @@
         document.getElementById('error').innerHTML = `
           <strong>Error loading checklist:</strong><br>
           ${error.message}<br><br>
-          Please check:<br>
-          • The file ID is correct<br>
-          • The file is shared as "Anyone with the link"<br>
-          • The file is a valid Excel file
+          <strong>Setup steps:</strong><br>
+          1. Open your Excel file with Google Sheets<br>
+          2. Go to File → Share → Publish to web<br>
+          3. Select "Microsoft Excel (.xlsx)" format<br>
+          4. Click "Publish" and copy the URL<br>
+          5. Replace PUBLISHED_SHEET_URL in the code
         `;
         console.error('Error:', error);
       }
