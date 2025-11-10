@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ERU Checklist</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f7f7f7;
+      --card: #ffffff;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --accent: #f59e0b;
+      --ring: #333;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      padding: 20px;
+    }
+
+    #progress-box {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      background: var(--ring);
+      color: white;
+      padding: 12px 16px;
+      border-radius: 12px;
+      box-shadow: 0 6px 18px rgba(0,0,0,.2);
+      z-index: 1000;
+      min-width: 120px;
+      text-align: center;
+    }
+    #progress-box .label {
+      font-size: 12px;
+      letter-spacing: .06em;
+      opacity: .85;
+    }
+    #progress-percent {
+      margin-top: 4px;
+      font-size: 26px;
+      font-weight: 800;
+    }
+
+    .container {
+      max-width: 820px;
+      margin: 96px auto 48px;
+      background: var(--card);
+      padding: 32px 40px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, .06);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      letter-spacing: .02em;
+    }
+
+    #loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+
+    #error {
+      background: #fee;
+      border: 2px solid #c33;
+      color: #c33;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+
+    .section { margin-top: 24px; }
+    .section-header {
+      background: var(--accent);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 800;
+      letter-spacing: .02em;
+      display: inline-block;
+    }
+
+    .task-list {
+      list-style: none;
+      padding: 0;
+      margin: 10px 0 0 0;
+    }
+
+    .task-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 6px;
+      border-bottom: 1px solid #eaeaea;
+      gap: 16px;
+    }
+
+    .task-text {
+      flex: 1;
+      line-height: 1.5;
+    }
+    .task-text.checked {
+      text-decoration: line-through;
+      color: var(--muted);
+    }
+
+    .task-checkbox {
+      transform: scale(1.25);
+      cursor: pointer;
+    }
+
+    .setup-instructions {
+      background: #e0f2fe;
+      border: 2px solid #0284c7;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+
+    .setup-instructions h3 {
+      margin-top: 0;
+      color: #0369a1;
+    }
+
+    .setup-instructions code {
+      background: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+
+    .setup-instructions ol {
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+  <div id="progress-box">
+    <div class="label">PROGRESS</div>
+    <div id="progress-percent">0%</div>
+  </div>
+
+  <div class="container">
+    <h1>ERU CHECKLIST</h1>
+    
+    <div class="setup-instructions">
+      <h3>📋 Setup Instructions</h3>
+      <ol>
+        <li>Upload your Excel file to Google Drive</li>
+        <li>Right-click the file → Share → Change to "Anyone with the link"</li>
+        <li>Copy the file ID from the share link (e.g., <code>1ABC...XYZ</code> from <code>https://drive.google.com/file/d/1ABC...XYZ/view</code>)</li>
+        <li>Replace <code>YOUR_FILE_ID_HERE</code> in the code below (line 145) with your file ID</li>
+      </ol>
+    </div>
+
+    <div id="loading">Loading checklist...</div>
+    <div id="error" style="display:none;"></div>
+    <div id="content"></div>
+  </div>
+
+  <script>
+    // ==================== CONFIGURATION ====================
+    // Replace this with your Google Drive file ID
+    const GOOGLE_DRIVE_FILE_ID = '1CiKj_EY3ElDPYDXMEZN4kFnu33TcffHi';
+    // ======================================================
+
+    let checklistData = [];
+    
+    // Load saved state from localStorage
+    function loadState() {
+      const saved = localStorage.getItem('eruChecklistState');
+      return saved ? JSON.parse(saved) : {};
+    }
+
+    // Save state to localStorage
+    function saveState() {
+      const state = {};
+      checklistData.forEach(item => {
+        state[item.id] = item.checked;
+      });
+      localStorage.setItem('eruChecklistState', JSON.stringify(state));
+    }
+
+    // Calculate and update progress
+    function updateProgress() {
+      const total = checklistData.length;
+      const checked = checklistData.filter(item => item.checked).length;
+      const percent = total ? Math.round((checked / total) * 100) : 0;
+      document.getElementById('progress-percent').textContent = percent + '%';
+    }
+
+    // Load Excel file from Google Drive
+    async function loadFromGoogleDrive() {
+      try {
+        // Convert Google Drive link to direct download link
+        const downloadUrl = `https://drive.google.com/uc?export=download&id=${GOOGLE_DRIVE_FILE_ID}`;
+        
+        const response = await fetch(downloadUrl);
+        if (!response.ok) {
+          throw new Error('Failed to fetch file from Google Drive. Make sure the file is shared publicly.');
+        }
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        
+        parseWorkbook(workbook);
+        renderChecklist();
+        document.getElementById('loading').style.display = 'none';
+        
+      } catch (error) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('error').innerHTML = `
+          <strong>Error loading checklist:</strong><br>
+          ${error.message}<br><br>
+          Please check:<br>
+          • The file ID is correct<br>
+          • The file is shared as "Anyone with the link"<br>
+          • The file is a valid Excel file
+        `;
+        console.error('Error:', error);
+      }
+    }
+
+    // Parse workbook into checklist data
+    function parseWorkbook(workbook) {
+      const savedState = loadState();
+      let nextId = 1;
+      
+      workbook.SheetNames.forEach(sheetName => {
+        const sheet = workbook.Sheets[sheetName];
+        const data = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        
+        if (data.length === 0) return;
+        
+        // Find task column (case-insensitive)
+        const columns = Object.keys(data[0]);
+        const taskCol = columns.find(col => 
+          /task|item|check|content/i.test(col.toLowerCase())
+        );
+        
+        if (!taskCol) return;
+        
+        // Find order column
+        const orderCol = columns.find(col => 
+          /^(order|ord|index|#)$/i.test(col.toLowerCase())
+        );
+        
+        // Sort by order if available
+        if (orderCol) {
+          data.sort((a, b) => {
+            const aVal = parseFloat(a[orderCol]) || Infinity;
+            const bVal = parseFloat(b[orderCol]) || Infinity;
+            return aVal - bVal;
+          });
+        }
+        
+        // Add items from this sheet
+        data.forEach(row => {
+          const taskText = String(row[taskCol] || '').trim();
+          if (!taskText) return;
+          
+          const item = {
+            id: nextId,
+            section: sheetName.trim(),
+            task: taskText,
+            checked: savedState[nextId] || false
+          };
+          
+          checklistData.push(item);
+          nextId++;
+        });
+      });
+      
+      updateProgress();
+    }
+
+    // Render the checklist
+    function renderChecklist() {
+      const sections = {};
+      checklistData.forEach(item => {
+        if (!sections[item.section]) {
+          sections[item.section] = [];
+        }
+        sections[item.section].push(item);
+      });
+      
+      let html = '';
+      Object.keys(sections).forEach(sectionName => {
+        html += `
+          <section class="section">
+            <h2 class="section-header">${sectionName}</h2>
+            <ul class="task-list">
+        `;
+        
+        sections[sectionName].forEach(item => {
+          html += `
+            <li class="task-row">
+              <span class="task-text ${item.checked ? 'checked' : ''}" data-id="${item.id}">
+                ${item.task}
+              </span>
+              <input class="task-checkbox" 
+                     type="checkbox" 
+                     data-id="${item.id}"
+                     ${item.checked ? 'checked' : ''}>
+            </li>
+          `;
+        });
+        
+        html += `
+            </ul>
+          </section>
+        `;
+      });
+      
+      document.getElementById('content').innerHTML = html;
+      attachEventListeners();
+    }
+
+    // Attach event listeners to checkboxes
+    function attachEventListeners() {
+      const checkboxes = document.querySelectorAll('.task-checkbox');
+      
+      checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+          const id = parseInt(this.dataset.id);
+          const isChecked = this.checked;
+          
+          if (isChecked) {
+            // Check if all previous items are checked
+            let valid = true;
+            checklistData.forEach(item => {
+              if (item.id < id && !item.checked) {
+                valid = false;
+              }
+            });
+            
+            if (!valid) {
+              alert('You must complete all previous items first.');
+              this.checked = false;
+              return;
+            }
+            
+            // Update state
+            const item = checklistData.find(i => i.id === id);
+            if (item) item.checked = true;
+            
+            // Update UI
+            const label = document.querySelector(`.task-text[data-id="${id}"]`);
+            if (label) label.classList.add('checked');
+            
+          } else {
+            // Uncheck this item
+            const item = checklistData.find(i => i.id === id);
+            if (item) item.checked = false;
+            
+            const label = document.querySelector(`.task-text[data-id="${id}"]`);
+            if (label) label.classList.remove('checked');
+            
+            // Uncheck all items below
+            checklistData.forEach(item => {
+              if (item.id > id) {
+                item.checked = false;
+                const cb = document.querySelector(`.task-checkbox[data-id="${item.id}"]`);
+                const lbl = document.querySelector(`.task-text[data-id="${item.id}"]`);
+                if (cb) cb.checked = false;
+                if (lbl) lbl.classList.remove('checked');
+              }
+            });
+          }
+          
+          saveState();
+          updateProgress();
+        });
+      });
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', loadFromGoogleDrive);
+  </script>
+</body>
+</html>
